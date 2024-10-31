@@ -2,6 +2,11 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ApiEase.Core", "ApiEase.Core\ApiEase.Core.csproj", "{9C55D118-B405-471F-B701-16DC0036DEFF}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{77D7D6F2-05CC-457D-9C39-9172F032084A}"
+	ProjectSection(SolutionItems) = preProject
+		.github\workflows\publishNuGet.yml = .github\workflows\publishNuGet.yml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
