@@ -1,6 +1,6 @@
-# FlexiApiClient
+# ApiEase
 
-`FlexiApiClient` is a .NET library designed to simplify API client creation with built-in support for session-based authentication, retry policies, and flexible configuration. Leveraging [Refit](https://github.com/reactiveui/refit) for defining API interfaces, the package provides base classes and extension methods that streamline the registration of custom HTTP clients with dependency injection.
+`ApiEase` is a .NET library designed to simplify API client creation with built-in support for session-based authentication, retry policies, and flexible configuration. Leveraging [Refit](https://github.com/reactiveui/refit) for defining API interfaces, the package provides base classes and extension methods that streamline the registration of custom HTTP clients with dependency injection.
 
 ## Features
 
@@ -11,10 +11,10 @@
 
 ## Installation
 
-To install `FlexiApiClient`, use:
+To install `ApiEase`, use:
 
 ```bash
-dotnet add package FlexiApiClient
+dotnet add package ApiEase
 ```
 
 ## Getting Started
