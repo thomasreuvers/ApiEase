@@ -1,11 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
-using ApiEase.Core.Clients.Base;
 using ApiEase.Core.Contracts;
 using ApiEase.Core.Handlers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Polly;
 using Refit;
 
 namespace ApiEase.Core.Extensions;
@@ -16,79 +14,153 @@ namespace ApiEase.Core.Extensions;
 [SuppressMessage("ReSharper", "MemberCanBePrivate.Global")]
 public static class IServiceCollectionExtensions
 {
-    /// <summary>
-    /// Registers an API client with specified settings and optional retry policy.
-    /// </summary>
-    /// <typeparam name="TClient">The type of the client that extends <see cref="BaseHttpClient{TApi}"/>.</typeparam>
-    /// <typeparam name="TApi">The Refit interface that defines the API endpoints, must inherit <see cref="IBaseApi"/>.</typeparam>
-    /// <typeparam name="TSettings">The type containing configuration settings for the API, must inherit <see cref="IBaseSettings"/>.</typeparam>
-    /// <param name="serviceCollection">The service collection to which the client and dependencies will be added.</param>
-    /// <param name="configuration">The configuration provider used to retrieve the settings.</param>
-    /// <param name="policyFactory">Optional factory function to create an <see cref="IAsyncPolicy"/> for handling retries and fault tolerance.</param>
-    /// <exception cref="InvalidOperationException">Thrown if the configuration section for <typeparamref name="TSettings"/> is not found in <c>ApiSettings</c>.</exception>
-    public static void AddApiClient<TClient, TApi, TSettings>(
-        this IServiceCollection serviceCollection,
-        IConfiguration configuration,
-        Func<IServiceProvider, IAsyncPolicy>? policyFactory = null)
-    where TClient : BaseHttpClient<TApi>
-    where TApi : class, IBaseApi
-    where TSettings : class, IBaseSettings
-    {
-        AddApiClient<TClient, TApi, TSettings, DefaultDelegatingHandler<TSettings>>(
-            serviceCollection, configuration, policyFactory);
-    }
     
     /// <summary>
-    /// Registers an API client with specified settings, authentication handler, and optional retry policy.
+    /// 
     /// </summary>
-    /// <typeparam name="TClient">The type of the client that extends <see cref="BaseHttpClient{TApi}"/>.</typeparam>
-    /// <typeparam name="TApi">The Refit interface that defines the API endpoints, must inherit <see cref="IBaseApi"/>.</typeparam>
-    /// <typeparam name="TSettings">The type containing configuration settings for the API, must inherit <see cref="IBaseSettings"/>.</typeparam>
-    /// <typeparam name="TDelegatingHandler">A custom <see cref="DelegatingHandler"/> for handling authentication or custom HTTP behavior.</typeparam>
-    /// <param name="serviceCollection">The service collection to which the client and dependencies will be added.</param>
-    /// <param name="configuration">The configuration provider used to retrieve the settings.</param>
-    /// <param name="policyFactory">Optional factory function to create an <see cref="IAsyncPolicy"/> for handling retries and fault tolerance.</param>
-    /// <exception cref="InvalidOperationException">Thrown if the configuration section for <typeparamref name="TSettings"/> is not found in <c>ApiSettings</c>.</exception>
-    public static void AddApiClient<TClient, TApi, TSettings, TDelegatingHandler>(
-            this IServiceCollection serviceCollection,
-            IConfiguration configuration,
-            Func<IServiceProvider, IAsyncPolicy>? policyFactory = null)
-        where TClient : BaseHttpClient<TApi>
-        where TApi : class, IBaseApi
-        where TSettings : class, IBaseSettings
-        where TDelegatingHandler : DelegatingHandler
+    /// <param name="services"></param>
+    /// <param name="configuration"></param>
+    public static void AddDynamicClients(this IServiceCollection services, IConfiguration configuration)
     {
-        // RegisterApiClient<TClient, TSettings>(serviceCollection, configuration);
-        var sectionName = typeof(TSettings).Name.Replace("Settings", string.Empty);
-        var section = configuration.GetSection($"ApiSettings:{sectionName}");
+        var clientInterfaces = GetDynamicClientInterfaces();
+
+        foreach (var interfaceType in clientInterfaces)
+        {
+            var settingsType = GetSettingsType(interfaceType);
+            var delegatingHandlerType = GetDelegatingHandlerType(interfaceType);
+
+            if (settingsType != null)
+            {
+                RegisterSettings(services, configuration, settingsType);
+                
+                var clientBuilder = ConfigureRefitClient(services, interfaceType, settingsType);
+
+                ConfigureDelegatingHandler(services, clientBuilder, settingsType, delegatingHandlerType);
+            }
+            // TODO: Implement cases where there are no settings or delegating handler later.
+            // else
+            // {
+            //     ConfigureRefitClient(services, interfaceType);
+            // }
+        }
+    }
+
+    // Helper Methods
+    private static IEnumerable<Type> GetDynamicClientInterfaces()
+    {
+        return AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(assembly => assembly.GetTypes())
+            .Where(t => 
+                t.IsInterface && 
+                typeof(IBaseClient).IsAssignableFrom(t) &&
+                IsNotABaseType(t))
+            .ToArray();
+    }
+
+    private static bool IsNotABaseType(Type t)
+    {
+        var baseInterfaces = new[]
+        {
+            typeof(IBaseClient),
+            typeof(IBaseClient<>),
+            typeof(IBaseClient<,>)
+        };
+
+        return !baseInterfaces.Contains(t);
+    }
+
+    private static Type? GetSettingsType(Type clientType)
+    {
+        var interfaceWithSettings = clientType.GetInterfaces()
+            .FirstOrDefault(i => i.IsGenericType && 
+                                 i.GetGenericTypeDefinition() == typeof(IBaseClient<>));
         
-        // Ensure configuration section exists, otherwise throw exception
+        return interfaceWithSettings?.GetGenericArguments()[0];
+    }
+
+    private static Type? GetDelegatingHandlerType(Type clientType)
+    {
+        var interfaceWithHandler = clientType.GetInterfaces()
+            .FirstOrDefault(i => i.IsGenericType && 
+                                 i.GetGenericTypeDefinition() == typeof(IBaseClient<,>));
+        
+        return interfaceWithHandler?.GetGenericArguments()[1];
+    }
+
+    private static void RegisterSettings(IServiceCollection services, IConfiguration configuration, Type settingsType)
+    {
+        var sectionName = settingsType.Name.Replace("Settings", string.Empty);
+        var section = configuration.GetSection($"ApiSettings:{sectionName}");
+
         if (!section.Exists())
         {
             throw new InvalidOperationException($"Configuration for 'ApiSettings:{sectionName}' is not set. Ensure it exists in the appsettings.");
         }
+        
+        var method = typeof(OptionsConfigurationServiceCollectionExtensions)
+            .GetMethods()
+            .First(m => m.Name == nameof(OptionsConfigurationServiceCollectionExtensions.Configure)
+                        && m.GetParameters().Length == 2);
+        var generic = method.MakeGenericMethod(settingsType);
+        generic.Invoke(null, new object[] {services, section});
+        Console.WriteLine($"Registered settings for: {settingsType.FullName}");
+    }
 
-        
-        // Register the settings for the API client
-        serviceCollection.Configure<TSettings>(section);
-        
-        // Register TApi as the Refit client, applying authentication handler if provided
-        serviceCollection.AddRefitClient<TApi>()
+    private static IHttpClientBuilder ConfigureRefitClient(IServiceCollection services, Type interfaceType, Type settingsType)
+    {
+        return services.AddRefitClient(interfaceType)
             .ConfigureHttpClient((provider, client) =>
             {
-                var settings = provider.GetRequiredService<IOptions<TSettings>>().Value;
-                client.BaseAddress = new Uri(settings.BaseUrl);
-            })
-            .AddHttpMessageHandler<TDelegatingHandler>();
+                client.BaseAddress = GetBaseAddress(provider, settingsType, interfaceType);
+            });
+    }
+    
+    // TODO: Implement further
+    private static void ConfigureRefitClient(IServiceCollection services, Type interfaceType)
+    {
+        services.AddRefitClient(interfaceType)
+            .ConfigureHttpClient((_, client) =>
+            {
+                client.BaseAddress = new Uri("https://localhost:5001");
+            });
+    }
 
-        serviceCollection.AddScoped<TDelegatingHandler>();
-        
-        // Register TClient with the already-registered TApi and custom policies
-        serviceCollection.AddTransient<TClient>(provider =>
+    private static Uri GetBaseAddress(IServiceProvider provider, Type settingsType, Type interfaceType)
+    {
+        // Get the options type dynamically (e.g., IOptions<ExampleSettings>)
+        var optionsType = typeof(IOptions<>).MakeGenericType(settingsType);
+
+        // Retrieve the options instance from the provider
+        var options = provider.GetService(optionsType);
+        if (options == null)
         {
-            var api = provider.GetRequiredService<TApi>(); // Use existing Refit client
-            var policy = policyFactory?.Invoke(provider) ?? Policy.NoOpAsync();
-            return (TClient)ActivatorUtilities.CreateInstance(provider, typeof(TClient), api, policy);
-        });
+            throw new InvalidOperationException($"Failed to resolve options for settings type '{settingsType.FullName}'. Ensure it is registered in the configuration.");
+        }
+
+        // Retrieve the Value property using reflection
+        if (optionsType.GetProperty("Value")?.GetValue(options) is not IBaseSettings settings || string.IsNullOrEmpty(settings.BaseUrl))
+        {
+            throw new ArgumentException($"Missing or invalid BaseAddress for client '{interfaceType.Name}' in settings type '{settingsType.FullName}'.");
+        }
+
+        return new Uri(settings.BaseUrl);
+    }
+
+    private static void ConfigureDelegatingHandler(
+        IServiceCollection services, IHttpClientBuilder clientBuilder, Type settingsType, Type? delegatingHandlerType)
+    {
+        if (delegatingHandlerType != null)
+        {
+            services.AddTransient(delegatingHandlerType);
+            clientBuilder.AddHttpMessageHandler(provider => 
+                (DelegatingHandler)provider.GetRequiredService(delegatingHandlerType));
+        }
+        else
+        {
+            var defaultHandlerType = typeof(DefaultDelegatingHandler<>).MakeGenericType(settingsType);
+            services.AddTransient(defaultHandlerType);
+            clientBuilder.AddHttpMessageHandler(provider => 
+                (DelegatingHandler)provider.GetRequiredService(defaultHandlerType));
+        }
     }
 }
