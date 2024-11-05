@@ -9,52 +9,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the code
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Ensure all history is fetched so GitVersion can access tags
-      
-      # Setup .NET
+          fetch-depth: 0
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: '8.0.x'
-      
-      # Restore dependencies
+
       - name: Restore dependencies
         run: dotnet restore
-      
-      # Install GitVersion
+
       - name: Install GitVersion
         run: dotnet tool install --global GitVersion.Tool
-      
-      # Ensure GitVersion is in the PATH
-      - name: Add GitVersion to PATH
-        run: echo "::add-path::$HOME/.dotnet/tools"
-      
-      # Get version using GitVersion
-      - name: Use GitVersion to Calculate Version
+
+      - name: Ensure GitVersion is in PATH
+        run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Get version with GitVersion
         id: gitversion
         run: |
-          dotnet-gitversion /output json > gitversion.json
-          VERSION=$(jq -r .NuGetVersion gitversion.json)
+          VERSION=$(dotnet-gitversion /showvariable NuGetVersion)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-      
-      # Build the project
+
+      - name: Display version
+        run: echo "Version is ${{ env.VERSION }}"
+
       - name: Build
         run: dotnet build --configuration Release --no-restore
-      
-      # Run tests
+
       - name: Run tests
         run: dotnet test --configuration Release --no-build --verbosity normal
-      
-      # Pack the project into a NuGet package
+
       - name: Pack
         run: dotnet pack --configuration Release --no-build --output ./nupkg /p:PackageVersion=${{ env.VERSION }}
-      
-      # Publish the NuGet package
+
       - name: Publish to NuGet
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: dotnet nuget push ./nupkg/*.nupkg --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push ./nupkg/*.nupkg --api-key $
