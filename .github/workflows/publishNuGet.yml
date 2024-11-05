@@ -31,9 +31,9 @@ jobs:
       - name: Get version with GitVersion
         id: gitversion
         run: |
-          VERSION=$(dotnet-gitversion /showvariable NuGetVersion)
+          VERSION=$(dotnet-gitversion /showvariable FullSemVer)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-
+          
       - name: Display version
         run: echo "Version is ${{ env.VERSION }}"
 
