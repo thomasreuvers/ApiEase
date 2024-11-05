@@ -32,10 +32,9 @@ jobs:
     - name: Use GitVersion to Calculate Version
       id: gitversion
       run: |
-       export PATH="$PATH:~/.dotnet/tools"
-       gitversion /output json > gitversion.json
-       VERSION=$(jq -r .SemVer gitversion.json)
-       echo "VERSION=$VERSION" >> $GITHUB_ENV
+        dotnet-gitversion /output json > gitversion.json
+        VERSION=$(jq -r .SemVer gitversion.json)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
       
     # Build the project
     - name: Build
