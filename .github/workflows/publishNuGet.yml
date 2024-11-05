@@ -34,7 +34,7 @@ jobs:
       
     # Pack the project into a NuGet package
     - name: Pack
-      run: dotnet pack --configuration Release --no-build --output ./nupkg
+      run: dotnet pack --configuration Release --no-build --output ./nupkg /p:Version=$(git describe --tags --abbrev=0)
       
     # Publish the NuGet package
     - name: Publish to NuGet
