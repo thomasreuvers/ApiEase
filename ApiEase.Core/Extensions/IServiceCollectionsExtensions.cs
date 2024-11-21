@@ -103,7 +103,6 @@ public static class IServiceCollectionExtensions
                         && m.GetParameters().Length == 2);
         var generic = method.MakeGenericMethod(settingsType);
         generic.Invoke(null, new object[] {services, section});
-        Console.WriteLine($"Registered settings for: {settingsType.FullName}");
     }
 
     private static IHttpClientBuilder ConfigureRefitClient(IServiceCollection services, Type interfaceType, Type settingsType)
