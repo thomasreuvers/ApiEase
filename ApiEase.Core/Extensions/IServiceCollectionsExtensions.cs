@@ -49,7 +49,7 @@ public static class IServiceCollectionExtensions
     private static IEnumerable<Type> GetDynamicClientInterfaces()
     {
         return AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(assembly => assembly.GetTypes())
+            .SelectMany(assembly => assembly.GetLoadableTypes())
             .Where(t => 
                 t.IsInterface && 
                 typeof(IBaseClient).IsAssignableFrom(t) &&
